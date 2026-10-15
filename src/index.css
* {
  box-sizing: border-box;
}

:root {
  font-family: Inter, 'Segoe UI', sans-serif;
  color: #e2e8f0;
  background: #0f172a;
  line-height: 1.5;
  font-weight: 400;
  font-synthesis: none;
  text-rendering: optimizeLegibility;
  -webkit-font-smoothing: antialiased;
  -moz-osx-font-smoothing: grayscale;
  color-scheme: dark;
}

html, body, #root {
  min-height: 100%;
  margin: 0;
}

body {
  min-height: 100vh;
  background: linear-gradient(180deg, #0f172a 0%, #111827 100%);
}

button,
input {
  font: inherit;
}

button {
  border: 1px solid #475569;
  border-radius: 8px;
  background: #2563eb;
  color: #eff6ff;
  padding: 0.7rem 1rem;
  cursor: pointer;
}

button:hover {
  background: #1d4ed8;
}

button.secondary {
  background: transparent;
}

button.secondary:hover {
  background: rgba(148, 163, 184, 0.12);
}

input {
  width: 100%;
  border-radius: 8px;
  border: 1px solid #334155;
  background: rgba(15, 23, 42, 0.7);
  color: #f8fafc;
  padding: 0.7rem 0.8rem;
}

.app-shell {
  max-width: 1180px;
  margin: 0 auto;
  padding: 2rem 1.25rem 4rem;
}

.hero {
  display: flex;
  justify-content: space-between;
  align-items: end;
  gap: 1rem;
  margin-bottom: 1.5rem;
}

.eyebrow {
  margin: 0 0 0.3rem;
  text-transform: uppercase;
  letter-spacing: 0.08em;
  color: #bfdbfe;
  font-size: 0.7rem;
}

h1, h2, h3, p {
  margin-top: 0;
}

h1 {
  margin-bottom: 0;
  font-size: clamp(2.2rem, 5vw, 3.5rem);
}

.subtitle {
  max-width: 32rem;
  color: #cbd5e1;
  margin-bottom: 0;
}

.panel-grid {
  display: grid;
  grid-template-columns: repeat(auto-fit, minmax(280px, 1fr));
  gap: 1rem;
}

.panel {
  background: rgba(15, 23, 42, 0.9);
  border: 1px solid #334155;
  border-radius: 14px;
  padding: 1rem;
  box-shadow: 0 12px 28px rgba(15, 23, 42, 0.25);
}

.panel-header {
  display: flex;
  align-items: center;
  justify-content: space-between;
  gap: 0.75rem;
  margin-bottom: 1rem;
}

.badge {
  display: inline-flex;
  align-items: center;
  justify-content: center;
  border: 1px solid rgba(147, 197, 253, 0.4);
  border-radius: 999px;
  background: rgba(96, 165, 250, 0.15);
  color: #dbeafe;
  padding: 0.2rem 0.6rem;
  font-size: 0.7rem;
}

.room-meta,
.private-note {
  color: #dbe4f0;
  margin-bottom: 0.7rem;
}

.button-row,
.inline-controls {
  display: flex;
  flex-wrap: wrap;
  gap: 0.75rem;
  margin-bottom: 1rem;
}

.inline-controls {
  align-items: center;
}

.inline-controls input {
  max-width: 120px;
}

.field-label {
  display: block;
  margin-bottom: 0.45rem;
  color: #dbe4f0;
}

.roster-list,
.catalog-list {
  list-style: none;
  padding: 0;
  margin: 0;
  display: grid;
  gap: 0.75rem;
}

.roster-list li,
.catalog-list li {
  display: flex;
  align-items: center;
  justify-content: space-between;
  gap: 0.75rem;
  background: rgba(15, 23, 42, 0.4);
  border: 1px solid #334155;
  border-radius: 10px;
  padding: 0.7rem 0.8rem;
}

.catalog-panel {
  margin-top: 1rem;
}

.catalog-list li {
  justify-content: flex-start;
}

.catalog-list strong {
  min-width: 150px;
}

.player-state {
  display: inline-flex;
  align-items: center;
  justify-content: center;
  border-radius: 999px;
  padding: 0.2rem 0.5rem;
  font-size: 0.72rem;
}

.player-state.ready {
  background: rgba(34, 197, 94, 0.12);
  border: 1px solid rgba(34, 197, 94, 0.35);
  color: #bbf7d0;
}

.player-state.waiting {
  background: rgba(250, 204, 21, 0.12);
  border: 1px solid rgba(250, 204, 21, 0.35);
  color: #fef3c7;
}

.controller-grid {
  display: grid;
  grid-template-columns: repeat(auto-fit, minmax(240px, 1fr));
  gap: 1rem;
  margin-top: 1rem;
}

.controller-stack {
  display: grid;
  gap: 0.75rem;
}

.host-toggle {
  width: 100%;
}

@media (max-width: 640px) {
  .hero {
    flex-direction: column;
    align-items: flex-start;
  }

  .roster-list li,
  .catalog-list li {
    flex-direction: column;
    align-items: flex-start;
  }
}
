@@ -1,0 +1,246 @@
+import { useMemo, useState } from 'react';
+import {
+  addSimulatedPlayers,
+  createRoom,
+  type Player,
+  type RoomState,
+} from './platform/domain/room';
+import { applySetReadyCommand } from './platform/authority/roomAuthority';
+
+const makeRoomId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `room-${crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  return `room-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const createDemoPlayers = (count: number): Player[] =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `player-${index + 1}`,
+    name: `Player ${index + 1}`,
+    isReady: false,
+    privateMarker: `fixture-${index + 1}`,
+  }));
+
+const createDefaultRoom = (): RoomState => createRoom(makeRoomId(), Date.now(), createDemoPlayers(3));
+
+function HostPanel({
+  room,
+  playersToAdd,
+  setPlayersToAdd,
+  onCreate,
+  onReset,
+  onAddPlayers,
+}: {
+  room: RoomState;
+  playersToAdd: number;
+  setPlayersToAdd: (value: number) => void;
+  onCreate: () => void;
+  onReset: () => void;
+  onAddPlayers: (count: number) => void;
+}) {
+  return (
+    <section className="panel host-panel">
+      <div className="panel-header">
+        <h2>Host panel</h2>
+        <span className="badge">Authority</span>
+      </div>
+
+      <p className="room-meta">Room id: {room.roomId}</p>
+      <p className="room-meta">Status: {room.status}</p>
+
+      <div className="button-row">
+        <button type="button" onClick={onCreate}>Create room</button>
+        <button type="button" className="secondary" onClick={onReset}>Reset room</button>
+      </div>
+
+      <label className="field-label" htmlFor="players-to-add">
+        Simulated players to add
+      </label>
+      <div className="inline-controls">
+        <input
+          id="players-to-add"
+          type="number"
+          min={1}
+          max={4}
+          value={playersToAdd}
+          onChange={(event) =>
+            setPlayersToAdd(Math.min(4, Math.max(1, Number(event.target.value) || 1)))
+          }
+        />
+        <button type="button" onClick={() => onAddPlayers(playersToAdd)}>
+          Add players
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PublicDisplayPanel({ room }: { room: RoomState }) {
+  return (
+    <section className="panel display-panel">
+      <div className="panel-header">
+        <h2>Public display</h2>
+        <span className="badge">Public projection</span>
+      </div>
+
+      <p className="room-meta">Room status: {room.status}</p>
+      <ul className="roster-list">
+        {room.players.length === 0 ? (
+          <li className="empty-state">No players yet.</li>
+        ) : (
+          room.players.map((player) => (
+            <li key={player.id}>
+              <span>{player.name}</span>
+              <span className={`player-state ${player.isReady ? 'ready' : 'waiting'}`}>
+                {player.isReady ? 'Ready' : 'Waiting'}
+              </span>
+            </li>
+          ))
+        )}
+      </ul>
+    </section>
+  );
+}
+
+function ControllerPanel({
+  player,
+  onToggleReady,
+}: {
+  player: Player;
+  onToggleReady: (targetPlayerId: string, readyState: boolean) => void;
+}) {
+  return (
+    <section className="panel controller-panel" aria-label={`${player.name} controller panel`}>
+      <div className="panel-header">
+        <h3>{player.name}</h3>
+        <span className="badge">Controller</span>
+      </div>
+
+      <p className="private-note">Private fixture: {player.privateMarker}</p>
+      <button
+        type="button"
+        aria-label={player.isReady ? `Mark ${player.name} as not ready` : `Mark ${player.name} as ready`}
+        onClick={() => onToggleReady(player.id, !player.isReady)}
+      >
+        {player.isReady ? 'Unmark ready' : 'Mark ready'}
+      </button>
+    </section>
+  );
+}
+
+export default function App() {
+  const [room, setRoom] = useState<RoomState>(() => createDefaultRoom());
+  const [playersToAdd, setPlayersToAdd] = useState<number>(2);
+
+  const controllerViews = useMemo(
+    () => room.players.map((player) => ({ player })),
+    [room.players],
+  );
+
+  const handleCreateRoom = () => {
+    setRoom(createDefaultRoom());
+  };
+
+  const handleResetRoom = () => {
+    setRoom(createDefaultRoom());
+  };
+
+  const handleAddPlayers = (count: number) => {
+    setRoom((current) => addSimulatedPlayers(current, count));
+  };
+
+  const handleToggleReady = (targetPlayerId: string, readyState: boolean) => {
+    setRoom((current) => {
+      const result = applySetReadyCommand(current, {
+        actorRole: 'controller',
+        actorPlayerId: targetPlayerId,
+        targetPlayerId,
+        ready: readyState,
+      });
+
+      return result.ok ? result.room : current;
+    });
+  };
+
+  const handleHostToggle = (targetPlayerId: string, readyState: boolean) => {
+    setRoom((current) => {
+      const result = applySetReadyCommand(current, {
+        actorRole: 'host',
+        actorPlayerId: null,
+        targetPlayerId,
+        ready: readyState,
+      });
+
+      return result.ok ? result.room : current;
+    });
+  };
+
+  return (
+    <main className="app-shell">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">Offline foundation</p>
+          <h1>Couch Tournament</h1>
+        </div>
+        <p className="subtitle">
+          Local room harness for host, public display and controller roles. Ready for a future approved game design.
+        </p>
+      </header>
+
+      <div className="panel-grid">
+        <HostPanel
+          room={room}
+          playersToAdd={playersToAdd}
+          setPlayersToAdd={setPlayersToAdd}
+          onCreate={handleCreateRoom}
+          onReset={handleResetRoom}
+          onAddPlayers={handleAddPlayers}
+        />
+        <PublicDisplayPanel room={room} />
+      </div>
+
+      <section className="panel catalog-panel">
+        <div className="panel-header">
+          <h2>Game catalog</h2>
+          <span className="badge">Design required</span>
+        </div>
+
+        <ul className="catalog-list">
+          <li>
+            <strong>card-hidden-role</strong>
+            <span>H*tler card game concept</span>
+          </li>
+          <li>
+            <strong>dealer-card</strong>
+            <span>Dealer guessing card game</span>
+          </li>
+          <li>
+            <strong>never-have</strong>
+            <span>Never Have I Ever</span>
+          </li>
+          <li>
+            <strong>either-or</strong>
+            <span>Would You Rather</span>
+          </li>
+          <li>
+            <strong>suspicion</strong>
+            <span>Short social deduction</span>
+          </li>
+        </ul>
+      </section>
+
+      <section className="controller-grid" aria-label="Controller panels">
+        {controllerViews.map(({ player }) => (
+          <div key={player.id} className="controller-stack">
+            <ControllerPanel player={player} onToggleReady={handleToggleReady} />
+            <button type="button" className="secondary host-toggle" onClick={() => handleHostToggle(player.id, !player.isReady)}>
+              Host toggles {player.name}
+            </button>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}

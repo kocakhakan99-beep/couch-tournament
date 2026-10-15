@@ -1,0 +1,86 @@
+import { describe, expect, it } from 'vitest';
+import {
+  addSimulatedPlayers,
+  buildControllerProjection,
+  buildPublicProjection,
+  createRoom,
+  setPlayerReady,
+  type Player,
+} from './room';
+import { applySetReadyCommand } from '../authority/roomAuthority';
+
+const makePlayer = (id: string, name: string, isReady = false): Player => ({
+  id,
+  name,
+  isReady,
+  privateMarker: `private-${id}`,
+});
+
+describe('room modeling and authority', () => {
+  it('creates a room and marks players ready', () => {
+    const room = createRoom('room-1', 1000, [makePlayer('player-1', 'Player 1')]);
+
+    const updated = setPlayerReady(room, 'player-1', true);
+
+    expect(updated.status).toBe('ready');
+    expect(updated.players[0].isReady).toBe(true);
+  });
+
+  it('does not share state across independent rooms', () => {
+    const roomA = createRoom('room-a', 1000, [makePlayer('player-1', 'Alpha')]);
+    const roomB = createRoom('room-b', 2000, [makePlayer('player-1', 'Bravo')]);
+
+    const updatedA = setPlayerReady(roomA, 'player-1', true);
+
+    expect(updatedA.roomId).toBe('room-a');
+    expect(roomB.players[0].isReady).toBe(false);
+    expect(updatedA.players[0].isReady).toBe(true);
+  });
+
+  it('rejects invalid controller actions without mutating the room', () => {
+    const room = createRoom('room-2', 2000, [makePlayer('player-1', 'Player 1')]);
+
+    const result = applySetReadyCommand(room, {
+      actorRole: 'controller',
+      actorPlayerId: 'player-2',
+      targetPlayerId: 'player-1',
+      ready: true,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(room.players[0].isReady).toBe(false);
+  });
+
+  it('rejects unknown player actions without mutation', () => {
+    const room = createRoom('room-3', 3000, [makePlayer('player-1', 'Player 1')]);
+
+    const result = applySetReadyCommand(room, {
+      actorRole: 'host',
+      actorPlayerId: null,
+      targetPlayerId: 'ghost',
+      ready: true,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(room.players[0].isReady).toBe(false);
+  });
+
+  it('keeps private controller fields hidden from public projections', () => {
+    const room = createRoom('room-4', 4000, [makePlayer('player-1', 'Player 1', true)]);
+
+    const publicProjection = buildPublicProjection(room);
+    const controllerProjection = buildControllerProjection(room, 'player-1');
+
+    expect('privateMarker' in publicProjection.players[0]).toBe(false);
+    expect(controllerProjection?.privateMarker).toBe('private-player-1');
+  });
+
+  it('adds simulated players safely', () => {
+    const room = createRoom('room-5', 5000, [makePlayer('player-1', 'Player 1')]);
+
+    const expanded = addSimulatedPlayers(room, 2);
+
+    expect(expanded.players).toHaveLength(3);
+    expect(expanded.players[1].name).toBe('Player 2');
+  });
+});

@@ -1,0 +1,121 @@
+export type RoomStatus = 'lobby' | 'ready';
+
+export interface Player {
+  id: string;
+  name: string;
+  isReady: boolean;
+  privateMarker: string;
+}
+
+export interface RoomState {
+  roomId: string;
+  createdAt: number;
+  players: Player[];
+  status: RoomStatus;
+}
+
+export interface PublicRoomView {
+  roomId: string;
+  createdAt: number;
+  players: Array<{
+    id: string;
+    name: string;
+    isReady: boolean;
+  }>;
+  status: RoomStatus;
+}
+
+export interface ControllerRoomView extends PublicRoomView {
+  playerId: string;
+  privateMarker: string;
+}
+
+const determineStatus = (players: Player[]): RoomStatus =>
+  players.length > 0 && players.every((player) => player.isReady) ? 'ready' : 'lobby';
+
+export const buildPublicProjection = (room: RoomState): PublicRoomView => ({
+  roomId: room.roomId,
+  createdAt: room.createdAt,
+  players: room.players.map(({ id, name, isReady }) => ({ id, name, isReady })),
+  status: room.status,
+});
+
+export const buildControllerProjection = (
+  room: RoomState,
+  playerId: string,
+): ControllerRoomView | null => {
+  const player = room.players.find((entry) => entry.id === playerId);
+
+  if (!player) {
+    return null;
+  }
+
+  return {
+    ...buildPublicProjection(room),
+    playerId: player.id,
+    privateMarker: player.privateMarker,
+  };
+};
+
+export const createRoom = (
+  roomId: string,
+  createdAt: number,
+  players: Player[] = [],
+): RoomState => {
+  const normalizedPlayers = players.map((player) => ({ ...player }));
+
+  return {
+    roomId,
+    createdAt,
+    players: normalizedPlayers,
+    status: determineStatus(normalizedPlayers),
+  };
+};
+
+export const setPlayerReady = (
+  room: RoomState,
+  playerId: string,
+  ready: boolean,
+): RoomState => {
+  const playerIndex = room.players.findIndex((player) => player.id === playerId);
+
+  if (playerIndex === -1) {
+    return room;
+  }
+
+  const nextPlayers = room.players.map((player) =>
+    player.id === playerId ? { ...player, isReady: ready } : player,
+  );
+
+  return {
+    ...room,
+    players: nextPlayers,
+    status: determineStatus(nextPlayers),
+  };
+};
+
+export const addSimulatedPlayers = (room: RoomState, count: number): RoomState => {
+  const safeCount = Math.max(0, Math.min(4, count));
+
+  if (safeCount === 0) {
+    return room;
+  }
+
+  const nextPlayers = [...room.players];
+
+  for (let offset = 0; offset < safeCount; offset += 1) {
+    const nextIndex = nextPlayers.length + 1;
+    nextPlayers.push({
+      id: `player-${nextIndex}`,
+      name: `Player ${nextIndex}`,
+      isReady: false,
+      privateMarker: `fixture-${nextIndex}`,
+    });
+  }
+
+  return {
+    ...room,
+    players: nextPlayers,
+    status: determineStatus(nextPlayers),
+  };
+};

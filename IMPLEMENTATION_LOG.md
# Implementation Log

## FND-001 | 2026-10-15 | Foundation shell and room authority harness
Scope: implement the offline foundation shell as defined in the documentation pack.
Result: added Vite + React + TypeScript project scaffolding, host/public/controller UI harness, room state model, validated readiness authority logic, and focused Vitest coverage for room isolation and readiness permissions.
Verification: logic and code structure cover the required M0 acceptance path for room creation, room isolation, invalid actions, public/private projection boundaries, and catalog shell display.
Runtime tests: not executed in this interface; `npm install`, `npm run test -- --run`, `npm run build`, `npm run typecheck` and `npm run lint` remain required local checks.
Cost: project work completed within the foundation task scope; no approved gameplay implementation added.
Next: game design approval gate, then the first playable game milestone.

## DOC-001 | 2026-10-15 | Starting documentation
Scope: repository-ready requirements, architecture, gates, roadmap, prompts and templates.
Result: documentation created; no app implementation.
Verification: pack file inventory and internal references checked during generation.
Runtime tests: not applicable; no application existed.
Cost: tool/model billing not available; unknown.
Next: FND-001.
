@@ -1,0 +1,19 @@
+STATUS.md
+# Current Status
+Updated: 2026-10-15
+
+## Reality
+The M0 foundation shell and local room harness are implemented in the repository. The project includes a neutral catalog shell, host/public/controller panels, and validation around room state isolation and readiness permission checks.
+
+## Current milestone
+M0: foundation shell.
+Next eligible task: first approved game design gate or further room-authority hardening work.
+
+## Authorized
+Neutral offline shell; catalog metadata; local room harness; role-separated views; tests and documentation.
+
+## Blocked
+All playable games; physical phone networking; Cast/AirPlay integration; backend; accounts; payments.
+
+## Verification note
+The required project scripts are configured in package.json, but local execution of npm install/build/test/lint/typecheck was not performed in this interface. The commands remain documented in README.md for local verification.
